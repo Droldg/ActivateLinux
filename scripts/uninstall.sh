@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+  echo "Error: run this script as your normal user, not with sudo/root." >&2
+  exit 1
+fi
+
 UUID="activatelinux@example.com"
 LEGACY_UUID="overlay-toggle@example.com"
 SERVICE_NAME="my-overlay.service"

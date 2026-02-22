@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+  echo "Error: run this script as your normal user, not with sudo/root." >&2
+  exit 1
+fi
+
 UUID="activatelinux@example.com"
 LEGACY_UUID="overlay-toggle@example.com"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -19,6 +24,16 @@ if [[ "$GNOME_MAJOR" =~ ^[0-9]+$ ]] && (( GNOME_MAJOR < 45 )); then
   SOURCE_DIR="$REPO_ROOT/gnome-extension-44"
 else
   SOURCE_DIR="$REPO_ROOT/gnome-extension"
+fi
+
+if [[ ! -d "$SOURCE_DIR" ]]; then
+  echo "Error: extension source dir not found: $SOURCE_DIR" >&2
+  exit 1
+fi
+
+if [[ ! -d "$SOURCE_DIR/schemas" ]]; then
+  echo "Error: missing schemas dir: $SOURCE_DIR/schemas" >&2
+  exit 1
 fi
 
 rm -rf "$TARGET_DIR"
