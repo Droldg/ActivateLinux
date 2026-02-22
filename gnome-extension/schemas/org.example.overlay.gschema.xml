@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.example.overlay" path="/org/example/overlay/">
+    <key name="autostart" type="b">
+      <default>false</default>
+      <summary>Autostart overlay service on extension enable</summary>
+      <description>If true, extension enable() starts my-overlay.service.</description>
+    </key>
+
+    <key name="stop-on-disable" type="b">
+      <default>true</default>
+      <summary>Stop overlay service on extension disable</summary>
+      <description>If true, extension disable() stops my-overlay.service.</description>
+    </key>
+
+    <key name="text" type="s">
+      <default>''</default>
+      <summary>Overlay text (reserved for future integration)</summary>
+      <description>Reserved key for future direct text syncing from extension to overlay app.</description>
+    </key>
+
+    <key name="config-path" type="s">
+      <default>''</default>
+      <summary>Path to overlay config JSON (reserved)</summary>
+      <description>Reserved key for future integration. Current MVP uses overlay-app/config.json via systemd service.</description>
+    </key>
+
+    <key name="overlay-script-path" type="s">
+      <default>''</default>
+      <summary>Path to overlay script (reserved)</summary>
+      <description>Reserved key for future integration. Current MVP starts overlay via systemd unit.</description>
+    </key>
+  </schema>
+</schemalist>

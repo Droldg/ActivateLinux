@@ -1,0 +1,15 @@
+[Unit]
+Description=My GNOME text overlay
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=__REPO_ROOT__/overlay-app
+ExecStart=/usr/bin/env python3 __REPO_ROOT__/overlay-app/overlay_text.py --config __REPO_ROOT__/overlay-app/config.json --css __REPO_ROOT__/overlay-app/style.css
+Restart=on-failure
+RestartSec=2
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target
