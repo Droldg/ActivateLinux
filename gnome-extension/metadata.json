@@ -3,7 +3,7 @@
   "name": "ActivateLinux",
   "description": "Start/stop Wayland overlay via systemd --user service.",
   "version": 1,
-  "shell-version": ["45", "46", "47"],
+  "shell-version": ["45", "46", "47", "48", "49"],
   "settings-schema": "org.example.overlay",
   "url": "https://example.com/ActivateLinux"
 }
