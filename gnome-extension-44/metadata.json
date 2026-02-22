@@ -1,0 +1,9 @@
+{
+  "uuid": "activatelinux@example.com",
+  "name": "ActivateLinux",
+  "description": "Start/stop Wayland overlay via systemd --user service.",
+  "version": 1,
+  "shell-version": ["44"],
+  "settings-schema": "org.example.overlay",
+  "url": "https://example.com/ActivateLinux"
+}
