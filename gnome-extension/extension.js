@@ -29,9 +29,10 @@ class OverlayQuickToggle extends QuickSettings.QuickToggle {
     }
 });
 
+const OverlayPanelButton = GObject.registerClass(
 class OverlayPanelButton extends PanelMenu.Button {
-    constructor(controller, iconFile) {
-        super(0.0, 'ActivateLinux');
+    _init(controller, iconFile) {
+        super._init(0.0, 'ActivateLinux');
         this._controller = controller;
         this._suppressToggleSignal = false;
 
@@ -71,7 +72,7 @@ class OverlayPanelButton extends PanelMenu.Button {
         }
         super.destroy();
     }
-}
+});
 
 export default class OverlayExtension extends Extension {
     enable() {
