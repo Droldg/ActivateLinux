@@ -82,6 +82,8 @@ export default class OverlayExtension extends Extension {
         this._settings = this.getSettings();
         this._busy = false;
         this._isRunning = false;
+        this._desiredRunning = false;
+        this._serviceFailureNotified = false;
         this._fallbackVisible = false;
         this._fallbackOverlay = null;
         this._fallbackLabel = null;
@@ -107,9 +109,15 @@ export default class OverlayExtension extends Extension {
             }
         );
 
-        this.refreshServiceState().then(() => {
-            if (this._settings.get_boolean('autostart') && !this._isRunning)
+        this.refreshServiceState().then(running => {
+            this._desiredRunning = running;
+            if (running)
+                this._setFallbackOverlayVisible(true);
+
+            if (this._settings.get_boolean('autostart') && !running)
                 this.setServiceRunning(true);
+            else
+                this._syncUiState();
         });
 
         console.log('[overlay-extension] enabled');
@@ -177,12 +185,19 @@ export default class OverlayExtension extends Extension {
     }
 
     async toggleService() {
-        return this.setServiceRunning(!this._isEffectivelyRunning());
+        return this.setServiceRunning(!this._desiredRunning);
     }
 
     async setServiceRunning(shouldRun) {
         if (this._busy)
             return;
+
+        this._desiredRunning = shouldRun;
+        this._serviceFailureNotified = false;
+        if (shouldRun)
+            this._setFallbackOverlayVisible(true);
+        else
+            this._setFallbackOverlayVisible(false);
 
         this._setBusy(true);
 
@@ -202,11 +217,6 @@ export default class OverlayExtension extends Extension {
 
         await this.refreshServiceState();
 
-        if (shouldRun && !this._isRunning)
-            this._setFallbackOverlayVisible(true);
-        else if (!shouldRun || this._isRunning)
-            this._setFallbackOverlayVisible(false);
-
         this._setBusy(false);
     }
 
@@ -215,13 +225,27 @@ export default class OverlayExtension extends Extension {
             let result = await this._runSystemctl(['is-active', SERVICE_NAME]);
             let running = result.ok && result.stdout.trim() === 'active';
             this._isRunning = running;
-            if (running && this._fallbackVisible)
+
+            if (this._desiredRunning) {
+                this._setFallbackOverlayVisible(true);
+                if (!running && !this._serviceFailureNotified) {
+                    this._notifyStartFailure(_('Service is inactive'));
+                    this._serviceFailureNotified = true;
+                }
+                if (running)
+                    this._serviceFailureNotified = false;
+            } else {
                 this._setFallbackOverlayVisible(false);
+                this._serviceFailureNotified = false;
+            }
+
             this._syncUiState();
             return running;
         } catch (error) {
             console.error(`[overlay-extension] refreshServiceState error: ${error}`);
             this._isRunning = false;
+            if (this._desiredRunning)
+                this._setFallbackOverlayVisible(true);
             this._syncUiState();
             return false;
         }
@@ -233,7 +257,7 @@ export default class OverlayExtension extends Extension {
     }
 
     _syncUiState() {
-        const effectiveRunning = this._isEffectivelyRunning();
+        const effectiveRunning = this._desiredRunning || this._isEffectivelyRunning();
 
         if (this._panelButton)
             this._panelButton.updateState(effectiveRunning, this._busy);
@@ -248,51 +272,61 @@ export default class OverlayExtension extends Extension {
     }
 
     _isEffectivelyRunning() {
-        return this._isRunning || this._fallbackVisible;
+        return this._desiredRunning || this._isRunning || this._fallbackVisible;
     }
 
     _setFallbackOverlayVisible(visible) {
-        if (visible) {
-            if (!this._fallbackOverlay) {
-                this._fallbackOverlay = new St.BoxLayout({
-                    reactive: false,
-                    track_hover: false,
-                });
-                this._fallbackOverlay.style = [
-                    'padding: 10px 14px;',
-                    'border-radius: 10px;',
-                    'border: 1px solid rgba(255, 255, 255, 0.22);',
-                    'background-color: rgba(20, 20, 20, 0.65);',
-                ].join(' ');
+        try {
+            if (visible) {
+                if (!this._fallbackOverlay) {
+                    this._fallbackOverlay = new St.BoxLayout({
+                        reactive: false,
+                        track_hover: false,
+                    });
+                    this._fallbackOverlay.style = [
+                        'padding: 10px 14px;',
+                        'border-radius: 10px;',
+                        'border: 1px solid rgba(255, 255, 255, 0.22);',
+                        'background-color: rgba(20, 20, 20, 0.65);',
+                    ].join(' ');
 
-                this._fallbackLabel = new St.Label({
-                    text: this._getOverlayText(),
-                    y_align: Clutter.ActorAlign.CENTER,
-                });
-                this._fallbackLabel.style = [
-                    'color: #ffffff;',
-                    'font-size: 20px;',
-                    'font-weight: 600;',
-                ].join(' ');
+                    this._fallbackLabel = new St.Label({
+                        text: this._getOverlayText(),
+                        y_align: Clutter.ActorAlign.CENTER,
+                    });
+                    this._fallbackLabel.style = [
+                        'color: #ffffff;',
+                        'font-size: 20px;',
+                        'font-weight: 600;',
+                    ].join(' ');
 
-                this._fallbackOverlay.add_child(this._fallbackLabel);
-                Main.layoutManager.addChrome(this._fallbackOverlay, {
-                    trackFullscreen: false,
-                });
+                    this._fallbackOverlay.add_child(this._fallbackLabel);
+                    try {
+                        Main.layoutManager.addChrome(this._fallbackOverlay, {
+                            trackFullscreen: false,
+                        });
+                    } catch (chromeError) {
+                        console.error(`[overlay-extension] addChrome failed, fallback to uiGroup: ${chromeError}`);
+                        Main.uiGroup.add_child(this._fallbackOverlay);
+                    }
+                }
+
+                this._updateFallbackOverlayText();
+                this._fallbackOverlay.show();
+                this._fallbackVisible = true;
+                this._positionFallbackOverlay();
+                this._syncUiState();
+                return;
             }
 
-            this._updateFallbackOverlayText();
-            this._fallbackOverlay.show();
-            this._fallbackVisible = true;
-            this._positionFallbackOverlay();
+            if (this._fallbackOverlay)
+                this._fallbackOverlay.hide();
+            this._fallbackVisible = false;
             this._syncUiState();
-            return;
+        } catch (error) {
+            this._fallbackVisible = false;
+            console.error(`[overlay-extension] fallback overlay error: ${error}`);
         }
-
-        if (this._fallbackOverlay)
-            this._fallbackOverlay.hide();
-        this._fallbackVisible = false;
-        this._syncUiState();
     }
 
     _positionFallbackOverlay() {
