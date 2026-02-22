@@ -2,6 +2,7 @@ import GObject from 'gi://GObject';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import St from 'gi://St';
+import Clutter from 'gi://Clutter';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
@@ -12,6 +13,8 @@ import {Extension, gettext as _} from 'resource:///org/gnome/shell/extensions/ex
 
 const SERVICE_NAME = 'my-overlay.service';
 const POLL_INTERVAL_SECONDS = 5;
+const FALLBACK_MARGIN_RIGHT = 24;
+const FALLBACK_MARGIN_BOTTOM = 24;
 
 const OverlayQuickToggle = GObject.registerClass(
 class OverlayQuickToggle extends QuickSettings.QuickToggle {
@@ -79,6 +82,15 @@ export default class OverlayExtension extends Extension {
         this._settings = this.getSettings();
         this._busy = false;
         this._isRunning = false;
+        this._fallbackVisible = false;
+        this._fallbackOverlay = null;
+        this._fallbackLabel = null;
+        this._settingsTextChangedId = this._settings.connect('changed::text', () => {
+            this._updateFallbackOverlayText();
+        });
+        this._monitorChangedId = Main.layoutManager.connect('monitors-changed', () => {
+            this._positionFallbackOverlay();
+        });
 
         let iconPath = `${this.path}/icons/overlay-symbolic.svg`;
         this._panelButton = new OverlayPanelButton(this, iconPath);
@@ -131,6 +143,18 @@ export default class OverlayExtension extends Extension {
             this._panelButton = null;
         }
 
+        this._destroyFallbackOverlay();
+
+        if (this._settings && this._settingsTextChangedId) {
+            this._settings.disconnect(this._settingsTextChangedId);
+            this._settingsTextChangedId = 0;
+        }
+
+        if (this._monitorChangedId) {
+            Main.layoutManager.disconnect(this._monitorChangedId);
+            this._monitorChangedId = 0;
+        }
+
         this._settings = null;
         console.log('[overlay-extension] disabled');
     }
@@ -153,7 +177,7 @@ export default class OverlayExtension extends Extension {
     }
 
     async toggleService() {
-        return this.setServiceRunning(!this._isRunning);
+        return this.setServiceRunning(!this._isEffectivelyRunning());
     }
 
     async setServiceRunning(shouldRun) {
@@ -165,13 +189,24 @@ export default class OverlayExtension extends Extension {
         try {
             let action = shouldRun ? 'start' : 'stop';
             let result = await this._runSystemctl([action, SERVICE_NAME]);
-            if (!result.ok)
+            if (!result.ok) {
                 console.error(`[overlay-extension] systemctl ${action} failed: ${result.stderr || result.stdout}`);
+                if (shouldRun)
+                    this._notifyStartFailure(result.stderr || result.stdout);
+            }
         } catch (error) {
             console.error(`[overlay-extension] setServiceRunning error: ${error}`);
+            if (shouldRun)
+                this._notifyStartFailure(String(error));
         }
 
         await this.refreshServiceState();
+
+        if (shouldRun && !this._isRunning)
+            this._setFallbackOverlayVisible(true);
+        else if (!shouldRun || this._isRunning)
+            this._setFallbackOverlayVisible(false);
+
         this._setBusy(false);
     }
 
@@ -180,6 +215,8 @@ export default class OverlayExtension extends Extension {
             let result = await this._runSystemctl(['is-active', SERVICE_NAME]);
             let running = result.ok && result.stdout.trim() === 'active';
             this._isRunning = running;
+            if (running && this._fallbackVisible)
+                this._setFallbackOverlayVisible(false);
             this._syncUiState();
             return running;
         } catch (error) {
@@ -196,15 +233,113 @@ export default class OverlayExtension extends Extension {
     }
 
     _syncUiState() {
+        const effectiveRunning = this._isEffectivelyRunning();
+
         if (this._panelButton)
-            this._panelButton.updateState(this._isRunning, this._busy);
+            this._panelButton.updateState(effectiveRunning, this._busy);
 
         if (this._quickToggle) {
-            this._quickToggle.checked = this._isRunning;
+            this._quickToggle.checked = effectiveRunning;
             if (typeof this._quickToggle.setSensitive === 'function')
                 this._quickToggle.setSensitive(!this._busy);
             else
                 this._quickToggle.reactive = !this._busy;
+        }
+    }
+
+    _isEffectivelyRunning() {
+        return this._isRunning || this._fallbackVisible;
+    }
+
+    _setFallbackOverlayVisible(visible) {
+        if (visible) {
+            if (!this._fallbackOverlay) {
+                this._fallbackOverlay = new St.BoxLayout({
+                    reactive: false,
+                    track_hover: false,
+                });
+                this._fallbackOverlay.style = [
+                    'padding: 10px 14px;',
+                    'border-radius: 10px;',
+                    'border: 1px solid rgba(255, 255, 255, 0.22);',
+                    'background-color: rgba(20, 20, 20, 0.65);',
+                ].join(' ');
+
+                this._fallbackLabel = new St.Label({
+                    text: this._getOverlayText(),
+                    y_align: Clutter.ActorAlign.CENTER,
+                });
+                this._fallbackLabel.style = [
+                    'color: #ffffff;',
+                    'font-size: 20px;',
+                    'font-weight: 600;',
+                ].join(' ');
+
+                this._fallbackOverlay.add_child(this._fallbackLabel);
+                Main.layoutManager.addChrome(this._fallbackOverlay, {
+                    trackFullscreen: false,
+                });
+            }
+
+            this._updateFallbackOverlayText();
+            this._fallbackOverlay.show();
+            this._fallbackVisible = true;
+            this._positionFallbackOverlay();
+            this._syncUiState();
+            return;
+        }
+
+        if (this._fallbackOverlay)
+            this._fallbackOverlay.hide();
+        this._fallbackVisible = false;
+        this._syncUiState();
+    }
+
+    _positionFallbackOverlay() {
+        if (!this._fallbackOverlay)
+            return;
+
+        const monitor = Main.layoutManager.primaryMonitor;
+        if (!monitor)
+            return;
+
+        const [, natWidth] = this._fallbackOverlay.get_preferred_width(-1);
+        const [, natHeight] = this._fallbackOverlay.get_preferred_height(-1);
+        const x = monitor.x + monitor.width - natWidth - FALLBACK_MARGIN_RIGHT;
+        const y = monitor.y + monitor.height - natHeight - FALLBACK_MARGIN_BOTTOM;
+        this._fallbackOverlay.set_position(Math.max(monitor.x, x), Math.max(monitor.y, y));
+    }
+
+    _updateFallbackOverlayText() {
+        if (!this._fallbackLabel)
+            return;
+
+        this._fallbackLabel.text = this._getOverlayText();
+        this._positionFallbackOverlay();
+    }
+
+    _getOverlayText() {
+        const text = this._settings?.get_string('text') ?? '';
+        return text.trim() || _('Overlay is running');
+    }
+
+    _notifyStartFailure(detail) {
+        const message = _('Service failed to stay active. Showing built-in overlay fallback.');
+        const body = detail ? String(detail).trim().split('\n')[0] : '';
+        const full = body ? `${message}\n${body}` : message;
+
+        if (typeof Main.notifyError === 'function')
+            Main.notifyError(_('ActivateLinux'), full);
+        else if (typeof Main.notify === 'function')
+            Main.notify(_('ActivateLinux'), full);
+    }
+
+    _destroyFallbackOverlay() {
+        if (this._fallbackOverlay) {
+            this._fallbackOverlay.destroy();
+            this._fallbackOverlay = null;
+            this._fallbackLabel = null;
+            this._fallbackVisible = false;
         }
     }
 
