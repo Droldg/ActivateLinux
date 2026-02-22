@@ -85,13 +85,11 @@ export default class OverlayExtension extends Extension {
         this._desiredRunning = false;
         this._serviceFailureNotified = false;
         this._fallbackVisible = false;
+        this._fallbackHost = null;
         this._fallbackOverlay = null;
         this._fallbackLabel = null;
         this._settingsTextChangedId = this._settings.connect('changed::text', () => {
             this._updateFallbackOverlayText();
-        });
-        this._monitorChangedId = Main.layoutManager.connect('monitors-changed', () => {
-            this._positionFallbackOverlay();
         });
 
         let iconPath = `${this.path}/icons/overlay-symbolic.svg`;
@@ -156,11 +154,6 @@ export default class OverlayExtension extends Extension {
         if (this._settings && this._settingsTextChangedId) {
             this._settings.disconnect(this._settingsTextChangedId);
             this._settingsTextChangedId = 0;
-        }
-
-        if (this._monitorChangedId) {
-            Main.layoutManager.disconnect(this._monitorChangedId);
-            this._monitorChangedId = 0;
         }
 
         this._settings = null;
@@ -278,13 +271,26 @@ export default class OverlayExtension extends Extension {
     _setFallbackOverlayVisible(visible) {
         try {
             if (visible) {
-                if (!this._fallbackOverlay) {
+                if (!this._fallbackHost) {
+                    this._fallbackHost = new St.Widget({
+                        reactive: false,
+                        x_expand: true,
+                        y_expand: true,
+                        x_align: Clutter.ActorAlign.FILL,
+                        y_align: Clutter.ActorAlign.FILL,
+                        layout_manager: new Clutter.BinLayout(),
+                    });
+
                     this._fallbackOverlay = new St.BoxLayout({
                         reactive: false,
                         track_hover: false,
+                        x_align: Clutter.ActorAlign.END,
+                        y_align: Clutter.ActorAlign.END,
                     });
                     this._fallbackOverlay.style = [
                         'padding: 10px 14px;',
+                        `margin-right: ${FALLBACK_MARGIN_RIGHT}px;`,
+                        `margin-bottom: ${FALLBACK_MARGIN_BOTTOM}px;`,
                         'border-radius: 10px;',
                         'border: 1px solid rgba(255, 255, 255, 0.22);',
                         'background-color: rgba(20, 20, 20, 0.65);',
@@ -301,26 +307,26 @@ export default class OverlayExtension extends Extension {
                     ].join(' ');
 
                     this._fallbackOverlay.add_child(this._fallbackLabel);
+                    this._fallbackHost.add_child(this._fallbackOverlay);
                     try {
-                        Main.layoutManager.addChrome(this._fallbackOverlay, {
+                        Main.layoutManager.addChrome(this._fallbackHost, {
                             trackFullscreen: false,
                         });
                     } catch (chromeError) {
                         console.error(`[overlay-extension] addChrome failed, fallback to uiGroup: ${chromeError}`);
-                        Main.uiGroup.add_child(this._fallbackOverlay);
+                        Main.uiGroup.add_child(this._fallbackHost);
                     }
                 }
 
                 this._updateFallbackOverlayText();
-                this._fallbackOverlay.show();
+                this._fallbackHost.show();
                 this._fallbackVisible = true;
-                this._positionFallbackOverlay();
                 this._syncUiState();
                 return;
             }
 
-            if (this._fallbackOverlay)
-                this._fallbackOverlay.hide();
+            if (this._fallbackHost)
+                this._fallbackHost.hide();
             this._fallbackVisible = false;
             this._syncUiState();
         } catch (error) {
@@ -329,27 +335,11 @@ export default class OverlayExtension extends Extension {
         }
     }
 
-    _positionFallbackOverlay() {
-        if (!this._fallbackOverlay)
-            return;
-
-        const monitor = Main.layoutManager.primaryMonitor;
-        if (!monitor)
-            return;
-
-        const [, natWidth] = this._fallbackOverlay.get_preferred_width(-1);
-        const [, natHeight] = this._fallbackOverlay.get_preferred_height(-1);
-        const x = monitor.x + monitor.width - natWidth - FALLBACK_MARGIN_RIGHT;
-        const y = monitor.y + monitor.height - natHeight - FALLBACK_MARGIN_BOTTOM;
-        this._fallbackOverlay.set_position(Math.max(monitor.x, x), Math.max(monitor.y, y));
-    }
-
     _updateFallbackOverlayText() {
         if (!this._fallbackLabel)
             return;
 
         this._fallbackLabel.text = this._getOverlayText();
-        this._positionFallbackOverlay();
     }
 
     _getOverlayText() {
@@ -369,12 +359,17 @@ export default class OverlayExtension extends Extension {
     }
 
     _destroyFallbackOverlay() {
-        if (this._fallbackOverlay) {
-            this._fallbackOverlay.destroy();
-            this._fallbackOverlay = null;
-            this._fallbackLabel = null;
-            this._fallbackVisible = false;
+        if (this._fallbackHost) {
+            this._fallbackHost.destroy();
+            this._fallbackHost = null;
         }
+
+        if (this._fallbackOverlay) {
+            this._fallbackOverlay = null;
+        }
+
+        this._fallbackLabel = null;
+        this._fallbackVisible = false;
     }
 
     _runSystemctl(systemctlArgs) {
