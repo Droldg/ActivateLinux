@@ -23,3 +23,16 @@ Scripts use:
 - `systemctl --user`
 
 Using `sudo` switches to root's home and root's user bus, which breaks extension/service setup.
+
+## Service behavior
+
+The GNOME extension can start a separate overlay app via `my-overlay.service`, but detaches to a built-in GNOME Shell fallback overlay if the service cannot stay active. The service is therefore optional for the overlay feature; if it fails, the extension still tries to show an overlay from GNOME Shell.
+
+If you want to debug the service, use:
+
+```bash
+systemctl --user status my-overlay.service
+journalctl --user -u my-overlay.service --since "5 minutes ago"
+```
+
+If the service does not work on your system, you can disable the `autostart` setting in the extension preferences and rely on the fallback overlay instead.
