@@ -18,5 +18,19 @@
       <summary>Overlay body text</summary>
       <description>The smaller overlay body text.</description>
     </key>
+
+    <key name="margin-right" type="i">
+      <default>110</default>
+      <range min="0" max="2000"/>
+      <summary>Right margin</summary>
+      <description>Distance in pixels from the right edge of the primary monitor.</description>
+    </key>
+
+    <key name="margin-bottom" type="i">
+      <default>64</default>
+      <range min="0" max="2000"/>
+      <summary>Bottom margin</summary>
+      <description>Distance in pixels from the bottom edge of the primary monitor.</description>
+    </key>
   </schema>
 </schemalist>

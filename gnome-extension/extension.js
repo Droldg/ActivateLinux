@@ -9,8 +9,6 @@ import * as QuickSettings from 'resource:///org/gnome/shell/ui/quickSettings.js'
 
 import {Extension, gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 
-const OVERLAY_MARGIN_RIGHT = 110;
-const OVERLAY_MARGIN_BOTTOM = 64;
 const OVERLAY_WIDTH = 340;
 const OVERLAY_HEIGHT = 56;
 
@@ -83,6 +81,12 @@ export default class OverlayExtension extends Extension {
         this._titleChangedId = this._settings.connect('changed::title', () => {
             this._updateOverlayText();
         });
+        this._marginRightChangedId = this._settings.connect('changed::margin-right', () => {
+            this._positionOverlayHost();
+        });
+        this._marginBottomChangedId = this._settings.connect('changed::margin-bottom', () => {
+            this._positionOverlayHost();
+        });
 
         this._panelButton = new OverlayPanelButton(this);
         Main.panel.addToStatusArea(this.uuid, this._panelButton);
@@ -119,6 +123,16 @@ export default class OverlayExtension extends Extension {
         if (this._settings && this._titleChangedId) {
             this._settings.disconnect(this._titleChangedId);
             this._titleChangedId = 0;
+        }
+
+        if (this._settings && this._marginRightChangedId) {
+            this._settings.disconnect(this._marginRightChangedId);
+            this._marginRightChangedId = 0;
+        }
+
+        if (this._settings && this._marginBottomChangedId) {
+            this._settings.disconnect(this._marginBottomChangedId);
+            this._marginBottomChangedId = 0;
         }
 
         this._settings = null;
@@ -231,9 +245,12 @@ export default class OverlayExtension extends Extension {
         this._overlayHost.set_size(monitor.width, monitor.height);
 
         if (this._overlayActor) {
+            const marginRight = this._settings?.get_int('margin-right') ?? 110;
+            const marginBottom = this._settings?.get_int('margin-bottom') ?? 64;
+
             this._overlayActor.set_position(
-                monitor.width - OVERLAY_WIDTH - OVERLAY_MARGIN_RIGHT,
-                monitor.height - OVERLAY_HEIGHT - OVERLAY_MARGIN_BOTTOM
+                monitor.width - OVERLAY_WIDTH - marginRight,
+                monitor.height - OVERLAY_HEIGHT - marginBottom
             );
         }
     }

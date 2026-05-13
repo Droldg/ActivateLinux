@@ -1,4 +1,5 @@
 import Adw from 'gi://Adw';
+import Gtk from 'gi://Gtk';
 
 import {ExtensionPreferences, gettext as _} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
@@ -46,8 +47,46 @@ export default class OverlayPrefs extends ExtensionPreferences {
         textGroup.add(titleRow);
         textGroup.add(textRow);
 
+        const positionGroup = new Adw.PreferencesGroup({
+            title: _('Position'),
+        });
+
+        const marginRightRow = new Adw.SpinRow({
+            title: _('Right margin'),
+            subtitle: _('Pixels from the right edge'),
+            adjustment: new Gtk.Adjustment({
+                lower: 0,
+                upper: 2000,
+                step_increment: 1,
+                page_increment: 10,
+                value: settings.get_int('margin-right'),
+            }),
+        });
+        marginRightRow.connect('notify::value', row => {
+            settings.set_int('margin-right', Math.round(row.value));
+        });
+
+        const marginBottomRow = new Adw.SpinRow({
+            title: _('Bottom margin'),
+            subtitle: _('Pixels from the bottom edge'),
+            adjustment: new Gtk.Adjustment({
+                lower: 0,
+                upper: 2000,
+                step_increment: 1,
+                page_increment: 10,
+                value: settings.get_int('margin-bottom'),
+            }),
+        });
+        marginBottomRow.connect('notify::value', row => {
+            settings.set_int('margin-bottom', Math.round(row.value));
+        });
+
+        positionGroup.add(marginRightRow);
+        positionGroup.add(marginBottomRow);
+
         page.add(behaviorGroup);
         page.add(textGroup);
+        page.add(positionGroup);
         window.add(page);
 
         window.set_default_size(700, 480);
