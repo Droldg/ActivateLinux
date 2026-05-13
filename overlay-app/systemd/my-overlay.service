@@ -12,6 +12,8 @@ RestartSec=2
 Environment=PYTHONUNBUFFERED=1
 Environment=XDG_RUNTIME_DIR=%t
 Environment=GDK_BACKEND=wayland
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=DISPLAY=:0
 StandardOutput=journal
 StandardError=journal
 
