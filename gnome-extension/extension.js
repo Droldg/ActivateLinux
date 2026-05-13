@@ -9,8 +9,8 @@ import * as QuickSettings from 'resource:///org/gnome/shell/ui/quickSettings.js'
 
 import {Extension, gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 
-const OVERLAY_MARGIN_RIGHT = 24;
-const OVERLAY_MARGIN_BOTTOM = 46;
+const OVERLAY_MARGIN_RIGHT = 110;
+const OVERLAY_MARGIN_BOTTOM = 64;
 
 const OverlayQuickToggle = GObject.registerClass(
 class OverlayQuickToggle extends QuickSettings.QuickToggle {
@@ -71,6 +71,7 @@ export default class OverlayExtension extends Extension {
         this._settings = this.getSettings();
         this._visible = false;
         this._overlayHost = null;
+        this._overlayActor = null;
         this._titleLabel = null;
         this._bodyLabel = null;
 
@@ -156,6 +157,7 @@ export default class OverlayExtension extends Extension {
         if (!this._overlayHost)
             this._buildOverlay();
 
+        this._positionOverlayHost();
         this._updateOverlayText();
         this._overlayHost.show();
         this._visible = true;
@@ -170,20 +172,17 @@ export default class OverlayExtension extends Extension {
     _buildOverlay() {
         this._overlayHost = new St.Widget({
             reactive: false,
-            x_expand: true,
-            y_expand: true,
-            x_align: Clutter.ActorAlign.FILL,
-            y_align: Clutter.ActorAlign.FILL,
             layout_manager: new Clutter.BinLayout(),
         });
+        this._positionOverlayHost();
 
-        const overlay = new St.BoxLayout({
+        this._overlayActor = new St.BoxLayout({
             vertical: true,
             reactive: false,
             x_align: Clutter.ActorAlign.END,
             y_align: Clutter.ActorAlign.END,
         });
-        overlay.style = [
+        this._overlayActor.style = [
             `margin-right: ${OVERLAY_MARGIN_RIGHT}px;`,
             `margin-bottom: ${OVERLAY_MARGIN_BOTTOM}px;`,
         ].join(' ');
@@ -209,9 +208,9 @@ export default class OverlayExtension extends Extension {
             'padding-top: 3px;',
         ].join(' ');
 
-        overlay.add_child(this._titleLabel);
-        overlay.add_child(this._bodyLabel);
-        this._overlayHost.add_child(overlay);
+        this._overlayActor.add_child(this._titleLabel);
+        this._overlayActor.add_child(this._bodyLabel);
+        this._overlayHost.add_child(this._overlayActor);
 
         try {
             Main.layoutManager.addChrome(this._overlayHost, {
@@ -221,6 +220,15 @@ export default class OverlayExtension extends Extension {
             console.error(`[activatelinux] addChrome failed, fallback to uiGroup: ${error}`);
             Main.uiGroup.add_child(this._overlayHost);
         }
+    }
+
+    _positionOverlayHost() {
+        if (!this._overlayHost)
+            return;
+
+        const monitor = Main.layoutManager.primaryMonitor;
+        this._overlayHost.set_position(monitor.x, monitor.y);
+        this._overlayHost.set_size(monitor.width, monitor.height);
     }
 
     _updateOverlayText() {
@@ -250,6 +258,7 @@ export default class OverlayExtension extends Extension {
 
         this._titleLabel = null;
         this._bodyLabel = null;
+        this._overlayActor = null;
         this._visible = false;
     }
 }
