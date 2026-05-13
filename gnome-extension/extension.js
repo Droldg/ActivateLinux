@@ -11,6 +11,8 @@ import {Extension, gettext as _} from 'resource:///org/gnome/shell/extensions/ex
 
 const OVERLAY_MARGIN_RIGHT = 110;
 const OVERLAY_MARGIN_BOTTOM = 64;
+const OVERLAY_WIDTH = 340;
+const OVERLAY_HEIGHT = 56;
 
 const OverlayQuickToggle = GObject.registerClass(
 class OverlayQuickToggle extends QuickSettings.QuickToggle {
@@ -172,19 +174,17 @@ export default class OverlayExtension extends Extension {
     _buildOverlay() {
         this._overlayHost = new St.Widget({
             reactive: false,
-            layout_manager: new Clutter.BinLayout(),
         });
         this._positionOverlayHost();
 
         this._overlayActor = new St.BoxLayout({
             vertical: true,
             reactive: false,
-            x_align: Clutter.ActorAlign.END,
-            y_align: Clutter.ActorAlign.END,
+            width: OVERLAY_WIDTH,
+            height: OVERLAY_HEIGHT,
         });
         this._overlayActor.style = [
-            `margin-right: ${OVERLAY_MARGIN_RIGHT}px;`,
-            `margin-bottom: ${OVERLAY_MARGIN_BOTTOM}px;`,
+            'text-align: right;',
         ].join(' ');
 
         this._titleLabel = new St.Label({
@@ -229,6 +229,13 @@ export default class OverlayExtension extends Extension {
         const monitor = Main.layoutManager.primaryMonitor;
         this._overlayHost.set_position(monitor.x, monitor.y);
         this._overlayHost.set_size(monitor.width, monitor.height);
+
+        if (this._overlayActor) {
+            this._overlayActor.set_position(
+                monitor.width - OVERLAY_WIDTH - OVERLAY_MARGIN_RIGHT,
+                monitor.height - OVERLAY_HEIGHT - OVERLAY_MARGIN_BOTTOM
+            );
+        }
     }
 
     _updateOverlayText() {
