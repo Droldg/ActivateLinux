@@ -9,8 +9,8 @@ import * as QuickSettings from 'resource:///org/gnome/shell/ui/quickSettings.js'
 
 import {Extension, gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 
-const OVERLAY_WIDTH = 430;
-const OVERLAY_HEIGHT = 170;
+const OVERLAY_MARGIN_RIGHT = 24;
+const OVERLAY_MARGIN_BOTTOM = 46;
 
 const OverlayQuickToggle = GObject.registerClass(
 class OverlayQuickToggle extends QuickSettings.QuickToggle {
@@ -180,34 +180,33 @@ export default class OverlayExtension extends Extension {
         const overlay = new St.BoxLayout({
             vertical: true,
             reactive: false,
-            x_align: Clutter.ActorAlign.START,
-            y_align: Clutter.ActorAlign.START,
-            width: OVERLAY_WIDTH,
-            height: OVERLAY_HEIGHT,
+            x_align: Clutter.ActorAlign.END,
+            y_align: Clutter.ActorAlign.END,
         });
         overlay.style = [
-            'background-color: rgba(28, 27, 43, 0.96);',
-            'border-radius: 0 0 6px 0;',
-            'padding: 98px 0 0 95px;',
+            `margin-right: ${OVERLAY_MARGIN_RIGHT}px;`,
+            `margin-bottom: ${OVERLAY_MARGIN_BOTTOM}px;`,
         ].join(' ');
 
         this._titleLabel = new St.Label({
             y_align: Clutter.ActorAlign.CENTER,
+            x_align: Clutter.ActorAlign.END,
         });
         this._titleLabel.style = [
-            'color: rgba(155, 154, 168, 0.58);',
-            'font-size: 29px;',
+            'color: rgba(255, 255, 255, 0.52);',
+            'font-size: 24px;',
             'font-weight: 400;',
         ].join(' ');
 
         this._bodyLabel = new St.Label({
             y_align: Clutter.ActorAlign.CENTER,
+            x_align: Clutter.ActorAlign.END,
         });
         this._bodyLabel.style = [
-            'color: rgba(165, 164, 178, 0.64);',
-            'font-size: 20px;',
+            'color: rgba(255, 255, 255, 0.52);',
+            'font-size: 18px;',
             'font-weight: 400;',
-            'padding-top: 5px;',
+            'padding-top: 3px;',
         ].join(' ');
 
         overlay.add_child(this._titleLabel);
