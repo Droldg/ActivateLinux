@@ -1,5 +1,4 @@
 import Adw from 'gi://Adw';
-import Gtk from 'gi://Gtk';
 
 import {ExtensionPreferences, gettext as _} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
@@ -17,55 +16,38 @@ export default class OverlayPrefs extends ExtensionPreferences {
         });
 
         const autostartRow = new Adw.SwitchRow({
-            title: _('Autostart when extension is enabled'),
-            subtitle: _('Starts my-overlay.service when GNOME extension is enabled'),
+            title: _('Show overlay when extension is enabled'),
+            subtitle: _('Uses the built-in GNOME Shell overlay. No user service is started.'),
         });
         settings.bind('autostart', autostartRow, 'active', 0);
 
-        const stopOnDisableRow = new Adw.SwitchRow({
-            title: _('Stop service when extension is disabled'),
-            subtitle: _('If enabled, disable() runs systemctl --user stop my-overlay.service'),
-        });
-        settings.bind('stop-on-disable', stopOnDisableRow, 'active', 0);
-
         behaviorGroup.add(autostartRow);
-        behaviorGroup.add(stopOnDisableRow);
 
-        const pathsGroup = new Adw.PreferencesGroup({
-            title: _('Paths (for future integration)'),
-            description: _('Current MVP reads overlay config from overlay-app/config.json via systemd service.'),
+        const textGroup = new Adw.PreferencesGroup({
+            title: _('Text'),
         });
 
-        const scriptPathRow = new Adw.EntryRow({
-            title: _('Overlay script path'),
-            text: settings.get_string('overlay-script-path'),
+        const titleRow = new Adw.EntryRow({
+            title: _('Title'),
+            text: settings.get_string('title'),
         });
-        scriptPathRow.connect('changed', row => {
-            settings.set_string('overlay-script-path', row.text);
-        });
-
-        const configPathRow = new Adw.EntryRow({
-            title: _('Overlay config path'),
-            text: settings.get_string('config-path'),
-        });
-        configPathRow.connect('changed', row => {
-            settings.set_string('config-path', row.text);
+        titleRow.connect('changed', row => {
+            settings.set_string('title', row.text);
         });
 
         const textRow = new Adw.EntryRow({
-            title: _('Overlay text (future use)'),
+            title: _('Body'),
             text: settings.get_string('text'),
         });
         textRow.connect('changed', row => {
             settings.set_string('text', row.text);
         });
 
-        pathsGroup.add(scriptPathRow);
-        pathsGroup.add(configPathRow);
-        pathsGroup.add(textRow);
+        textGroup.add(titleRow);
+        textGroup.add(textRow);
 
         page.add(behaviorGroup);
-        page.add(pathsGroup);
+        page.add(textGroup);
         window.add(page);
 
         window.set_default_size(700, 480);

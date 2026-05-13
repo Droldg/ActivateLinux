@@ -1,8 +1,6 @@
 import GObject from 'gi://GObject';
-import Gio from 'gi://Gio';
-import GLib from 'gi://GLib';
-import St from 'gi://St';
 import Clutter from 'gi://Clutter';
+import St from 'gi://St';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
@@ -11,10 +9,8 @@ import * as QuickSettings from 'resource:///org/gnome/shell/ui/quickSettings.js'
 
 import {Extension, gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 
-const SERVICE_NAME = 'my-overlay.service';
-const POLL_INTERVAL_SECONDS = 5;
-const FALLBACK_MARGIN_RIGHT = 24;
-const FALLBACK_MARGIN_BOTTOM = 24;
+const OVERLAY_WIDTH = 430;
+const OVERLAY_HEIGHT = 170;
 
 const OverlayQuickToggle = GObject.registerClass(
 class OverlayQuickToggle extends QuickSettings.QuickToggle {
@@ -27,44 +23,37 @@ class OverlayQuickToggle extends QuickSettings.QuickToggle {
 
         this._controller = controller;
         this.connect('clicked', () => {
-            this._controller.toggleService();
+            this._controller.toggleOverlay();
         });
     }
 });
 
 const OverlayPanelButton = GObject.registerClass(
 class OverlayPanelButton extends PanelMenu.Button {
-    _init(controller, iconFile) {
+    _init(controller) {
         super._init(0.0, 'ActivateLinux');
         this._controller = controller;
         this._suppressToggleSignal = false;
 
-        let gicon = Gio.icon_new_for_string(iconFile);
         this._icon = new St.Icon({
-            gicon,
+            icon_name: 'video-display-symbolic',
             style_class: 'system-status-icon',
         });
         this.add_child(this._icon);
 
-        this._switchItem = new PopupMenu.PopupSwitchMenuItem(_('Overlay Running'), false);
+        this._switchItem = new PopupMenu.PopupSwitchMenuItem(_('Show Overlay'), false);
         this._switchSignalId = this._switchItem.connect('toggled', (_item, state) => {
             if (this._suppressToggleSignal)
                 return;
-            this._controller.setServiceRunning(state);
+            this._controller.setOverlayVisible(state);
         });
 
         this.menu.addMenuItem(this._switchItem);
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-
-        let refreshItem = new PopupMenu.PopupMenuItem(_('Refresh Status'));
-        refreshItem.connect('activate', () => this._controller.refreshServiceState());
-        this.menu.addMenuItem(refreshItem);
     }
 
-    updateState(isRunning, busy) {
+    updateState(visible) {
         this._suppressToggleSignal = true;
-        this._switchItem.setToggleState(isRunning);
-        this._switchItem.setSensitive(!busy);
+        this._switchItem.setToggleState(visible);
         this._suppressToggleSignal = false;
     }
 
@@ -80,60 +69,28 @@ class OverlayPanelButton extends PanelMenu.Button {
 export default class OverlayExtension extends Extension {
     enable() {
         this._settings = this.getSettings();
-        this._busy = false;
-        this._isRunning = false;
-        this._desiredRunning = false;
-        this._serviceFailureNotified = false;
-        this._fallbackVisible = false;
-        this._fallbackHost = null;
-        this._fallbackOverlay = null;
-        this._fallbackLabel = null;
-        this._settingsTextChangedId = this._settings.connect('changed::text', () => {
-            this._updateFallbackOverlayText();
+        this._visible = false;
+        this._overlayHost = null;
+        this._titleLabel = null;
+        this._bodyLabel = null;
+
+        this._textChangedId = this._settings.connect('changed::text', () => {
+            this._updateOverlayText();
+        });
+        this._titleChangedId = this._settings.connect('changed::title', () => {
+            this._updateOverlayText();
         });
 
-        let iconPath = `${this.path}/icons/overlay-symbolic.svg`;
-        this._panelButton = new OverlayPanelButton(this, iconPath);
+        this._panelButton = new OverlayPanelButton(this);
         Main.panel.addToStatusArea(this.uuid, this._panelButton);
 
         this._setupQuickSettings();
+        this.setOverlayVisible(this._settings.get_boolean('autostart'));
 
-        this._pollId = GLib.timeout_add_seconds(
-            GLib.PRIORITY_DEFAULT,
-            POLL_INTERVAL_SECONDS,
-            () => {
-                this.refreshServiceState();
-                return GLib.SOURCE_CONTINUE;
-            }
-        );
-
-        this.refreshServiceState().then(running => {
-            this._desiredRunning = running;
-            if (running)
-                this._setFallbackOverlayVisible(true);
-
-            if (this._settings.get_boolean('autostart') && !running)
-                this.setServiceRunning(true);
-            else
-                this._syncUiState();
-        });
-
-        console.log('[overlay-extension] enabled');
+        console.log('[activatelinux] enabled');
     }
 
     disable() {
-        if (this._pollId) {
-            GLib.source_remove(this._pollId);
-            this._pollId = 0;
-        }
-
-        const stopOnDisable = this._settings?.get_boolean('stop-on-disable') ?? true;
-        if (stopOnDisable) {
-            this._runSystemctl(['stop', SERVICE_NAME]).catch(error =>
-                console.error(`[overlay-extension] stop on disable failed: ${error}`)
-            );
-        }
-
         if (this._quickToggle) {
             this._quickToggle.destroy();
             this._quickToggle = null;
@@ -149,15 +106,20 @@ export default class OverlayExtension extends Extension {
             this._panelButton = null;
         }
 
-        this._destroyFallbackOverlay();
+        this._destroyOverlay();
 
-        if (this._settings && this._settingsTextChangedId) {
-            this._settings.disconnect(this._settingsTextChangedId);
-            this._settingsTextChangedId = 0;
+        if (this._settings && this._textChangedId) {
+            this._settings.disconnect(this._textChangedId);
+            this._textChangedId = 0;
+        }
+
+        if (this._settings && this._titleChangedId) {
+            this._settings.disconnect(this._titleChangedId);
+            this._titleChangedId = 0;
         }
 
         this._settings = null;
-        console.log('[overlay-extension] disabled');
+        console.log('[activatelinux] disabled');
     }
 
     _setupQuickSettings() {
@@ -171,228 +133,124 @@ export default class OverlayExtension extends Extension {
             this._systemIndicator.quickSettingsItems.push(this._quickToggle);
             Main.panel.statusArea.quickSettings.addExternalIndicator(this._systemIndicator);
         } catch (error) {
-            console.error(`[overlay-extension] Quick Settings unavailable: ${error}`);
+            console.error(`[activatelinux] Quick Settings unavailable: ${error}`);
             this._systemIndicator = null;
             this._quickToggle = null;
         }
     }
 
-    async toggleService() {
-        return this.setServiceRunning(!this._desiredRunning);
+    toggleOverlay() {
+        this.setOverlayVisible(!this._visible);
     }
 
-    async setServiceRunning(shouldRun) {
-        if (this._busy)
-            return;
-
-        this._desiredRunning = shouldRun;
-        this._serviceFailureNotified = false;
-        if (shouldRun)
-            this._setFallbackOverlayVisible(true);
+    setOverlayVisible(visible) {
+        if (visible)
+            this._showOverlay();
         else
-            this._setFallbackOverlayVisible(false);
+            this._hideOverlay();
 
-        this._setBusy(true);
-
-        try {
-            let action = shouldRun ? 'start' : 'stop';
-            let result = await this._runSystemctl([action, SERVICE_NAME]);
-            if (!result.ok) {
-                console.error(`[overlay-extension] systemctl ${action} failed: ${result.stderr || result.stdout}`);
-                if (shouldRun)
-                    this._notifyStartFailure(result.stderr || result.stdout);
-            }
-        } catch (error) {
-            console.error(`[overlay-extension] setServiceRunning error: ${error}`);
-            if (shouldRun)
-                this._notifyStartFailure(String(error));
-        }
-
-        await this.refreshServiceState();
-
-        this._setBusy(false);
-    }
-
-    async refreshServiceState() {
-        try {
-            let result = await this._runSystemctl(['is-active', SERVICE_NAME]);
-            let running = result.ok && result.stdout.trim() === 'active';
-            this._isRunning = running;
-
-            if (this._desiredRunning) {
-                this._setFallbackOverlayVisible(true);
-                if (!running && !this._serviceFailureNotified) {
-                    this._notifyStartFailure(_('Service is inactive'));
-                    this._serviceFailureNotified = true;
-                }
-                if (running)
-                    this._serviceFailureNotified = false;
-            } else {
-                this._setFallbackOverlayVisible(false);
-                this._serviceFailureNotified = false;
-            }
-
-            this._syncUiState();
-            return running;
-        } catch (error) {
-            console.error(`[overlay-extension] refreshServiceState error: ${error}`);
-            this._isRunning = false;
-            if (this._desiredRunning)
-                this._setFallbackOverlayVisible(true);
-            this._syncUiState();
-            return false;
-        }
-    }
-
-    _setBusy(busy) {
-        this._busy = busy;
         this._syncUiState();
     }
 
-    _syncUiState() {
-        const effectiveRunning = this._desiredRunning || this._isEffectivelyRunning();
+    _showOverlay() {
+        if (!this._overlayHost)
+            this._buildOverlay();
 
-        if (this._panelButton)
-            this._panelButton.updateState(effectiveRunning, this._busy);
-
-        if (this._quickToggle) {
-            this._quickToggle.checked = effectiveRunning;
-            if (typeof this._quickToggle.setSensitive === 'function')
-                this._quickToggle.setSensitive(!this._busy);
-            else
-                this._quickToggle.reactive = !this._busy;
-        }
+        this._updateOverlayText();
+        this._overlayHost.show();
+        this._visible = true;
     }
 
-    _isEffectivelyRunning() {
-        return this._desiredRunning || this._isRunning || this._fallbackVisible;
+    _hideOverlay() {
+        if (this._overlayHost)
+            this._overlayHost.hide();
+        this._visible = false;
     }
 
-    _setFallbackOverlayVisible(visible) {
+    _buildOverlay() {
+        this._overlayHost = new St.Widget({
+            reactive: false,
+            x_expand: true,
+            y_expand: true,
+            x_align: Clutter.ActorAlign.FILL,
+            y_align: Clutter.ActorAlign.FILL,
+            layout_manager: new Clutter.BinLayout(),
+        });
+
+        const overlay = new St.BoxLayout({
+            vertical: true,
+            reactive: false,
+            x_align: Clutter.ActorAlign.START,
+            y_align: Clutter.ActorAlign.START,
+            width: OVERLAY_WIDTH,
+            height: OVERLAY_HEIGHT,
+        });
+        overlay.style = [
+            'background-color: rgba(28, 27, 43, 0.96);',
+            'border-radius: 0 0 6px 0;',
+            'padding: 98px 0 0 95px;',
+        ].join(' ');
+
+        this._titleLabel = new St.Label({
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        this._titleLabel.style = [
+            'color: rgba(155, 154, 168, 0.58);',
+            'font-size: 29px;',
+            'font-weight: 400;',
+        ].join(' ');
+
+        this._bodyLabel = new St.Label({
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        this._bodyLabel.style = [
+            'color: rgba(165, 164, 178, 0.64);',
+            'font-size: 20px;',
+            'font-weight: 400;',
+            'padding-top: 5px;',
+        ].join(' ');
+
+        overlay.add_child(this._titleLabel);
+        overlay.add_child(this._bodyLabel);
+        this._overlayHost.add_child(overlay);
+
         try {
-            if (visible) {
-                if (!this._fallbackHost) {
-                    this._fallbackHost = new St.Widget({
-                        reactive: false,
-                        x_expand: true,
-                        y_expand: true,
-                        x_align: Clutter.ActorAlign.FILL,
-                        y_align: Clutter.ActorAlign.FILL,
-                        layout_manager: new Clutter.BinLayout(),
-                    });
-
-                    this._fallbackOverlay = new St.BoxLayout({
-                        reactive: false,
-                        track_hover: false,
-                        x_align: Clutter.ActorAlign.END,
-                        y_align: Clutter.ActorAlign.END,
-                    });
-                    this._fallbackOverlay.style = [
-                        'padding: 10px 14px;',
-                        `margin-right: ${FALLBACK_MARGIN_RIGHT}px;`,
-                        `margin-bottom: ${FALLBACK_MARGIN_BOTTOM}px;`,
-                        'border-radius: 10px;',
-                        'border: 1px solid rgba(255, 255, 255, 0.22);',
-                        'background-color: rgba(20, 20, 20, 0.65);',
-                    ].join(' ');
-
-                    this._fallbackLabel = new St.Label({
-                        text: this._getOverlayText(),
-                        y_align: Clutter.ActorAlign.CENTER,
-                    });
-                    this._fallbackLabel.style = [
-                        'color: #ffffff;',
-                        'font-size: 20px;',
-                        'font-weight: 600;',
-                    ].join(' ');
-
-                    this._fallbackOverlay.add_child(this._fallbackLabel);
-                    this._fallbackHost.add_child(this._fallbackOverlay);
-                    try {
-                        Main.layoutManager.addChrome(this._fallbackHost, {
-                            trackFullscreen: false,
-                        });
-                    } catch (chromeError) {
-                        console.error(`[overlay-extension] addChrome failed, fallback to uiGroup: ${chromeError}`);
-                        Main.uiGroup.add_child(this._fallbackHost);
-                    }
-                }
-
-                this._updateFallbackOverlayText();
-                this._fallbackHost.show();
-                this._fallbackVisible = true;
-                this._syncUiState();
-                return;
-            }
-
-            if (this._fallbackHost)
-                this._fallbackHost.hide();
-            this._fallbackVisible = false;
-            this._syncUiState();
+            Main.layoutManager.addChrome(this._overlayHost, {
+                trackFullscreen: false,
+            });
         } catch (error) {
-            this._fallbackVisible = false;
-            console.error(`[overlay-extension] fallback overlay error: ${error}`);
+            console.error(`[activatelinux] addChrome failed, fallback to uiGroup: ${error}`);
+            Main.uiGroup.add_child(this._overlayHost);
         }
     }
 
-    _updateFallbackOverlayText() {
-        if (!this._fallbackLabel)
+    _updateOverlayText() {
+        if (!this._titleLabel || !this._bodyLabel)
             return;
 
-        this._fallbackLabel.text = this._getOverlayText();
+        const title = this._settings?.get_string('title').trim() || _('Activate Linux');
+        const text = this._settings?.get_string('text').trim() || _('Go to Settings to activate Linux.');
+
+        this._titleLabel.text = title;
+        this._bodyLabel.text = text;
     }
 
-    _getOverlayText() {
-        const text = this._settings?.get_string('text') ?? '';
-        return text.trim() || _('Overlay is running');
+    _syncUiState() {
+        if (this._panelButton)
+            this._panelButton.updateState(this._visible);
+
+        if (this._quickToggle)
+            this._quickToggle.checked = this._visible;
     }
 
-    _notifyStartFailure(detail) {
-        const message = _('Service failed to stay active. Showing built-in overlay fallback.');
-        const body = detail ? String(detail).trim().split('\n')[0] : '';
-        const full = body ? `${message}\n${body}` : message;
-
-        if (typeof Main.notifyError === 'function')
-            Main.notifyError(_('ActivateLinux'), full);
-        else if (typeof Main.notify === 'function')
-            Main.notify(_('ActivateLinux'), full);
-    }
-
-    _destroyFallbackOverlay() {
-        if (this._fallbackHost) {
-            this._fallbackHost.destroy();
-            this._fallbackHost = null;
+    _destroyOverlay() {
+        if (this._overlayHost) {
+            this._overlayHost.destroy();
+            this._overlayHost = null;
         }
 
-        if (this._fallbackOverlay) {
-            this._fallbackOverlay = null;
-        }
-
-        this._fallbackLabel = null;
-        this._fallbackVisible = false;
-    }
-
-    _runSystemctl(systemctlArgs) {
-        const argv = ['systemctl', '--user', ...systemctlArgs];
-        const proc = Gio.Subprocess.new(
-            argv,
-            Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE
-        );
-
-        return new Promise((resolve, reject) => {
-            proc.communicate_utf8_async(null, null, (p, res) => {
-                try {
-                    let [, stdout, stderr] = p.communicate_utf8_finish(res);
-                    resolve({
-                        ok: p.get_exit_status() === 0,
-                        stdout: stdout ?? '',
-                        stderr: stderr ?? '',
-                        exitStatus: p.get_exit_status(),
-                    });
-                } catch (error) {
-                    reject(error);
-                }
-            });
-        });
+        this._titleLabel = null;
+        this._bodyLabel = null;
+        this._visible = false;
     }
 }

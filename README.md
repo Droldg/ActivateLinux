@@ -7,32 +7,22 @@ Do not use `sudo` with these scripts.
 
 ```bash
 cd ~/ActivateLinux/scripts
-chmod +x install_extension.sh install_service.sh link_dev_extension.sh uninstall.sh
+chmod +x install_extension.sh link_dev_extension.sh uninstall.sh
 ./install_extension.sh
-./install_service.sh
-systemctl --user daemon-reload
-systemctl --user enable --now my-overlay.service
 gnome-extensions enable activatelinux@example.com
 ```
 
 ## Why no sudo
 
-Scripts use:
+The install script uses:
 - `$HOME/.local/share/gnome-shell/extensions`
-- `$HOME/.config/systemd/user`
-- `systemctl --user`
 
-Using `sudo` switches to root's home and root's user bus, which breaks extension/service setup.
+Using `sudo` switches to root's home, which installs the extension in the wrong place.
 
-## Service behavior
+## Overlay behavior
 
-The GNOME extension can start a separate overlay app via `my-overlay.service`, but detaches to a built-in GNOME Shell fallback overlay if the service cannot stay active. The service is therefore optional for the overlay feature; if it fails, the extension still tries to show an overlay from GNOME Shell.
+The overlay is drawn directly by the GNOME Shell extension. It does not install,
+start, or require a `systemd --user` service.
 
-If you want to debug the service, use:
-
-```bash
-systemctl --user status my-overlay.service
-journalctl --user -u my-overlay.service --since "5 minutes ago"
-```
-
-If the service does not work on your system, you can disable the `autostart` setting in the extension preferences and rely on the fallback overlay instead.
+Use the panel icon, the Quick Settings toggle, or extension preferences to show
+or hide the built-in overlay.

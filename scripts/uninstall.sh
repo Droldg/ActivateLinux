@@ -13,7 +13,7 @@ EXT_DIR="$HOME/.local/share/gnome-shell/extensions/$UUID"
 LEGACY_EXT_DIR="$HOME/.local/share/gnome-shell/extensions/$LEGACY_UUID"
 SERVICE_FILE="$HOME/.config/systemd/user/$SERVICE_NAME"
 
-echo "Stopping and disabling user service (if present)..."
+echo "Stopping and disabling legacy user service (if present)..."
 systemctl --user stop "$SERVICE_NAME" 2>/dev/null || true
 systemctl --user disable "$SERVICE_NAME" 2>/dev/null || true
 
@@ -24,7 +24,7 @@ else
   echo "Service file not found: $SERVICE_FILE"
 fi
 
-echo "Reloading user systemd daemon..."
+echo "Reloading user systemd daemon after legacy cleanup..."
 systemctl --user daemon-reload
 
 echo "Disabling extension in GNOME (if enabled)..."

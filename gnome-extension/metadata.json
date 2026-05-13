@@ -1,7 +1,7 @@
 {
   "uuid": "activatelinux@example.com",
   "name": "ActivateLinux",
-  "description": "Start/stop Wayland overlay via systemd --user service.",
+  "description": "Show an Activate Linux overlay directly in GNOME Shell.",
   "version": 1,
   "shell-version": ["44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "56"],
   "settings-schema": "org.example.overlay",
