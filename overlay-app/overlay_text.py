@@ -19,7 +19,8 @@ gi.require_version("Gtk4LayerShell", "1.0")
 
 from gi.repository import Gdk, Gtk, Gtk4LayerShell  # type: ignore
 
-DEFAULT_TEXT = "Overlay is running"
+DEFAULT_TITLE = "Activate Linux"
+DEFAULT_TEXT = "Go to Settings to activate Linux."
 DEFAULT_MARGIN_RIGHT = 24
 DEFAULT_MARGIN_BOTTOM = 24
 
@@ -74,19 +75,26 @@ class OverlayWindow(Gtk.ApplicationWindow):
         )
 
     def _build_ui(self, config: dict) -> None:
+        title = str(config.get("title", DEFAULT_TITLE)).strip() or DEFAULT_TITLE
         text = str(config.get("text", DEFAULT_TEXT)).strip() or DEFAULT_TEXT
 
         container = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         container.add_css_class("overlay-container")
 
-        label = Gtk.Label(label=text)
-        label.add_css_class("overlay-label")
-        label.set_wrap(True)
-        label.set_xalign(1.0)
-        label.set_halign(Gtk.Align.END)
-        label.set_valign(Gtk.Align.END)
+        title_label = Gtk.Label(label=title)
+        title_label.add_css_class("overlay-title")
+        title_label.set_wrap(True)
+        title_label.set_xalign(1.0)
+        title_label.set_halign(Gtk.Align.END)
 
-        container.append(label)
+        body_label = Gtk.Label(label=text)
+        body_label.add_css_class("overlay-label")
+        body_label.set_wrap(True)
+        body_label.set_xalign(1.0)
+        body_label.set_halign(Gtk.Align.END)
+
+        container.append(title_label)
+        container.append(body_label)
         self.set_child(container)
 
 
