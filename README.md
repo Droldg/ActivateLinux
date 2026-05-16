@@ -12,12 +12,7 @@ chmod +x install_extension.sh link_dev_extension.sh uninstall.sh
 gnome-extensions enable activatelinux@example.com
 ```
 
-## Why no sudo
 
-The install script uses:
-- `$HOME/.local/share/gnome-shell/extensions`
-
-Using `sudo` switches to root's home, which installs the extension in the wrong place.
 
 ## Overlay behavior
 
